@@ -5,7 +5,6 @@ import threading
 import time
 import sys
 import os
-import platform
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,28 +33,16 @@ car_state = {
 # Initialize LiDAR processor
 lidar_processor = None
 try:
-    # Configure serial port based on OS
-    if platform.system() == 'Windows':
-        lidar_port = 'COM3'  # Windows default LiDAR port
-    else:
-        lidar_port = '/dev/ttyUSB0'  # Raspberry Pi default LiDAR port
-    
-    lidar_processor = LidarProcessor(port=lidar_port)
+    lidar_processor = LidarProcessor(port='/dev/ttyUSB0')
     lidar_processor.start()
-    print(f"LiDAR initialized on port {lidar_port}")
+    print("LiDAR initialized")
 except Exception as e:
     print(f"Could not initialize LiDAR: {e}")
 
 # Serial communication with Arduino
 try:
-    # Configure Arduino port based on OS
-    if platform.system() == 'Windows':
-        arduino_port = 'COM4'  # Windows default Arduino port
-    else:
-        arduino_port = '/dev/ttyACM0'  # Raspberry Pi default Arduino port
-    
-    arduino = serial.Serial(arduino_port, 9600, timeout=1)
-    print(f"Arduino connected on port {arduino_port}")
+    arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+    print("Arduino connected")
 except Exception as e:
     print(f"Could not connect to Arduino: {e}")
     arduino = None

@@ -1,50 +1,12 @@
 from rplidar import RPLidar
 import time
 import json
-import platform
 import serial.tools.list_ports
 import serial
-import re
-import ctypes
-import sys
-import os
-from pathlib import Path
-
-def is_admin():
-    """Check if the script is running with administrator privileges"""
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
-
-def run_as_admin():
-    """Relaunch the script with administrator privileges"""
-    if platform.system() == 'Windows' and not is_admin():
-        print("Requesting administrator privileges...")
-        
-        # Get the path to the Python interpreter in the virtual environment
-        venv_python = Path("venv/Scripts/python.exe")
-        if venv_python.exists():
-            python_path = str(venv_python)
-        else:
-            python_path = sys.executable
-            
-        # Get the path to the current script
-        script_path = os.path.abspath(__file__)
-        
-        # Construct the command to run
-        command = f'"{python_path}" "{script_path}"'
-        
-        # Request elevation
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", f'/k {command}', None, 1)
-        sys.exit()
 
 class LidarProcessor:
     def __init__(self, port=None):
         """Initialize LiDAR processor with optional port parameter"""
-        # Request admin privileges on Windows
-        run_as_admin()
-        
         self.port = port
         self.lidar = None
         self.scanning = False
@@ -55,15 +17,10 @@ class LidarProcessor:
             "back": 0
         }
         
-        # Print environment information
-        print("\nEnvironment Information:")
-        print(f"Python executable: {sys.executable}")
-        print(f"Virtual environment: {'venv' in sys.executable}")
-        
-        # Print available ports for debugging
+        # Print available ports
         print("\nAvailable serial ports:")
         for port in serial.tools.list_ports.comports():
-            print(f"- {port.device} (Description: {port.description}, HWID: {port.hwid})")
+            print(f"- {port.device}")
 
     def find_lidar_port(self):
         """Try to automatically detect the LiDAR port"""
