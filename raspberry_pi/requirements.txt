@@ -1,0 +1,5 @@
+flask==2.0.1
+werkzeug==2.0.3
+pyserial==3.5
+numpy==1.21.2
+rplidar-roboticia==0.9.5  # For LiDAR support 

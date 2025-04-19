@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Wheels Control Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .dashboard-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-panel {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .sensor-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .mode-button {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .joystick-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+        }
+        #lidarCanvas {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .sensor-data {
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .steering-control {
+            width: 100%;
+            margin: 20px 0;
+        }
+        .car-diagram {
+            width: 200px;
+            height: 200px;
+            position: relative;
+            margin: 20px auto;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+        }
+        .sensor-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            position: absolute;
+            background-color: #0d6efd;
+        }
+        .sensor-value-display {
+            position: absolute;
+            font-size: 12px;
+            color: #333;
+        }
+        .battery-warning {
+            color: #f44336;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <h1 class="text-center mb-4">Power Wheels Control Dashboard</h1>
+        
+        <div class="row">
+            <!-- Mode Selection -->
+            <div class="col-md-3">
+                <div class="dashboard-card">
+                    <h3>Operation Mode</h3>
+                    <button class="btn btn-primary mode-button" onclick="setMode('manual')">Manual Control</button>
+                    <button class="btn btn-success mode-button" onclick="setMode('autonomous')">Autonomous</button>
+                    <button class="btn btn-info mode-button" onclick="setMode('line_following')">Line Following</button>
+                    <div class="mt-3">
+                        <h4>Current Mode: <span id="current-mode">Manual</span></h4>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="col-md-6">
+                <div class="control-panel">
+                    <h3>Manual Control</h3>
+                    <div class="joystick-container">
+                        <div class="text-center">
+                            <button class="btn btn-outline-primary" onclick="setSpeed(100)">
+                                <i class="fas fa-arrow-up"></i>
+                            </button>
+                            <div>
+                                <button class="btn btn-outline-primary" onclick="setSteering(-100)">
+                                    <i class="fas fa-arrow-left"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="setSpeed(0)">
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="setSteering(100)">
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
+                            <button class="btn btn-outline-primary" onclick="setSpeed(-100)">
+                                <i class="fas fa-arrow-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label for="speed-range">Speed: <span id="speed-value">0</span>%</label>
+                        <input type="range" class="form-range" id="speed-range" min="-100" max="100" value="0" onchange="setSpeed(this.value)">
+                    </div>
+                    <div class="mt-3">
+                        <label for="steering-range">Steering: <span id="steering-value">0</span>%</label>
+                        <input type="range" class="form-range" id="steering-range" min="-100" max="100" value="0" onchange="setSteering(this.value)">
+                    </div>
+                </div>
+
+                <!-- Car Diagram with Sensor Positions -->
+                <div class="dashboard-card">
+                    <h3>Sensor Positions</h3>
+                    <div class="car-diagram">
+                        <div class="sensor-dot" style="top: 20px; left: 20px;"></div>
+                        <div class="sensor-value-display" style="top: 30px; left: 20px;" id="front-left-value">FL</div>
+                        <div class="sensor-dot" style="top: 20px; right: 20px;"></div>
+                        <div class="sensor-value-display" style="top: 30px; right: 20px;" id="front-right-value">FR</div>
+                        <div class="sensor-dot" style="bottom: 20px; left: 20px;"></div>
+                        <div class="sensor-value-display" style="bottom: 30px; left: 20px;" id="back-left-value">BL</div>
+                        <div class="sensor-dot" style="bottom: 20px; right: 20px;"></div>
+                        <div class="sensor-value-display" style="bottom: 30px; right: 20px;" id="back-right-value">BR</div>
+                    </div>
+                </div>
+
+                <!-- LiDAR Visualization -->
+                <div class="dashboard-card">
+                    <h3>LiDAR Visualization</h3>
+                    <canvas id="lidarCanvas" width="400" height="400"></canvas>
+                </div>
+            </div>
+
+            <!-- Sensor Data -->
+            <div class="col-md-3">
+                <div class="dashboard-card">
+                    <h3>Sensor Data</h3>
+                    <div class="mb-3">
+                        <h5>Ultrasonic Sensors</h5>
+                        <div id="ultrasonic-data" class="sensor-data">Loading...</div>
+                    </div>
+                    <div class="mb-3">
+                        <h5>Gyroscope</h5>
+                        <div id="gyro-data" class="sensor-data">Loading...</div>
+                    </div>
+                    <div class="mb-3">
+                        <h5>LiDAR Obstacles</h5>
+                        <div id="lidar-data" class="sensor-data">Loading...</div>
+                    </div>
+                    <div class="mb-3">
+                        <h5>Battery Level</h5>
+                        <div class="progress">
+                            <div id="battery-level" class="progress-bar" role="progressbar" style="width: 100%">100%</div>
+                        </div>
+                        <div class="mt-2">
+                            <span id="battery-voltage">0.0V</span>
+                            <span id="battery-warning" class="battery-warning" style="display: none;">⚠️ Low Battery!</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/lidar_visualization.js') }}"></script>
+    <script>
+        let currentState = {
+            mode: 'manual',
+            speed: 0,
+            steering: 0
+        };
+
+        function updateState() {
+            fetch('/api/state')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('current-mode').textContent = data.mode;
+                    document.getElementById('speed-value').textContent = data.speed;
+                    document.getElementById('speed-range').value = data.speed;
+                    document.getElementById('steering-value').textContent = data.steering;
+                    document.getElementById('steering-range').value = data.steering;
+                    
+                    // Update battery display
+                    const batteryLevel = document.getElementById('battery-level');
+                    const percentage = data.sensor_data.battery_percentage || 0;
+                    const voltage = data.sensor_data.battery_voltage || 0;
+                    const lowBattery = data.sensor_data.battery_warning || false;
+                    
+                    batteryLevel.style.width = `${percentage}%`;
+                    batteryLevel.textContent = `${percentage}%`;
+                    document.getElementById('battery-voltage').textContent = `${voltage.toFixed(1)}V`;
+                    
+                    if (percentage < 20 || lowBattery) {
+                        batteryLevel.className = 'progress-bar bg-danger';
+                        document.getElementById('battery-warning').style.display = 'inline';
+                    } else if (percentage < 50) {
+                        batteryLevel.className = 'progress-bar bg-warning';
+                        document.getElementById('battery-warning').style.display = 'none';
+                    } else {
+                        batteryLevel.className = 'progress-bar bg-success';
+                        document.getElementById('battery-warning').style.display = 'none';
+                    }
+                    
+                    // Update sensor data
+                    document.getElementById('ultrasonic-data').textContent = 
+                        JSON.stringify(data.sensor_data.ultrasonic, null, 2);
+                    document.getElementById('gyro-data').textContent = 
+                        JSON.stringify(data.sensor_data.gyro, null, 2);
+                    document.getElementById('lidar-data').textContent = 
+                        JSON.stringify(data.sensor_data.lidar, null, 2);
+
+                    // Update sensor values in car diagram
+                    document.getElementById('front-left-value').textContent = 
+                        data.sensor_data.ultrasonic.front_left + 'cm';
+                    document.getElementById('front-right-value').textContent = 
+                        data.sensor_data.ultrasonic.front_right + 'cm';
+                    document.getElementById('back-left-value').textContent = 
+                        data.sensor_data.ultrasonic.back_left + 'cm';
+                    document.getElementById('back-right-value').textContent = 
+                        data.sensor_data.ultrasonic.back_right + 'cm';
+                });
+        }
+
+        function setMode(mode) {
+            currentState.mode = mode;
+            sendCommand();
+        }
+
+        function setSpeed(speed) {
+            currentState.speed = parseInt(speed);
+            document.getElementById('speed-value').textContent = speed;
+            document.getElementById('speed-range').value = speed;
+            sendCommand();
+        }
+
+        function setSteering(steering) {
+            currentState.steering = parseInt(steering);
+            document.getElementById('steering-value').textContent = steering;
+            document.getElementById('steering-range').value = steering;
+            sendCommand();
+        }
+
+        function sendCommand() {
+            fetch('/api/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(currentState)
+            });
+        }
+
+        // Update state every second
+        setInterval(updateState, 1000);
+        updateState();
+    </script>
+</body>
+</html> 
