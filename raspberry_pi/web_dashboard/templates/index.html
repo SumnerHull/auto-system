@@ -378,6 +378,12 @@
 
         socket.on('sensor_update', (data) => {
             updateSensorData(data);
+            // Update Arduino status based on sensor data
+            if (data.ultrasonic || data.gyro || data.battery) {
+                updateStatus('arduinoStatusText', 'Connected');
+            } else {
+                updateStatus('arduinoStatusText', 'Disconnected');
+            }
             addLog('Sensor data updated', 'info');
         });
 
@@ -423,7 +429,11 @@
         // Update LiDAR data
         function updateLidarData(data) {
             // Update LiDAR status
-            updateStatus('lidarStatusText', 'Connected');
+            if (data && Object.keys(data).length > 0) {
+                updateStatus('lidarStatusText', 'Connected');
+            } else {
+                updateStatus('lidarStatusText', 'Disconnected');
+            }
             // Update LiDAR visualization
             updateLidarVisualization(data);
         }
@@ -445,10 +455,17 @@
                 updateSensorData(data.sensor_data);
                 
                 // Update Arduino status
-                if (Object.keys(data.sensor_data).length > 0) {
+                if (data.sensor_data.ultrasonic || data.sensor_data.gyro || data.sensor_data.battery) {
                     updateStatus('arduinoStatusText', 'Connected');
                 } else {
                     updateStatus('arduinoStatusText', 'Disconnected');
+                }
+
+                // Update LiDAR status
+                if (data.sensor_data.lidar && Object.keys(data.sensor_data.lidar).length > 0) {
+                    updateStatus('lidarStatusText', 'Connected');
+                } else {
+                    updateStatus('lidarStatusText', 'Disconnected');
                 }
 
                 // Update battery status
@@ -498,8 +515,13 @@
             const indicator = element.parentElement.querySelector('.status-indicator');
             
             element.textContent = status;
-            indicator.className = 'status-indicator';
-            indicator.classList.add(`status-${status.toLowerCase()}`);
+            if (status === 'Connected') {
+                indicator.classList.remove('status-disconnected');
+                indicator.classList.add('status-connected');
+            } else {
+                indicator.classList.remove('status-connected');
+                indicator.classList.add('status-disconnected');
+            }
         }
 
         // Mode control
