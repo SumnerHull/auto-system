@@ -3,8 +3,8 @@
 #include <NewPing.h>  // Ultrasonic sensor library
 
 // Motor control pins for Spark motor controllers
-const int DRIVE_MOTOR_PWM = 5;    // PWM pin for drive motors
-const int STEERING_MOTOR_PWM = 6;  // PWM pin for steering motor
+const int DRIVE_MOTOR_PWM = 6;    // PWM pin for drive motors
+const int STEERING_MOTOR_PWM = 7;  // PWM pin for steering motor
 
 // Ultrasonic sensor pins (45-degree angles at each corner)
 const int TRIGGER_PIN_FRONT_LEFT = 2;
