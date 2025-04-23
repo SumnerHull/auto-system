@@ -5,12 +5,30 @@ import threading
 import time
 import sys
 import os
+import logging
+from datetime import datetime
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lidar_processing.lidar_processor import LidarProcessor
 
 app = Flask(__name__)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('web_dashboard')
+
+def reset_serial_port(port):
+    """Reset the serial port by closing it if it's open"""
+    try:
+        # Try to open the port to check if it's already open
+        test_serial = serial.Serial(port)
+        test_serial.close()
+        logger.info(f"Successfully reset port {port}")
+    except serial.SerialException as e:
+        logger.info(f"Port {port} was not open or already closed")
+    except Exception as e:
+        logger.error(f"Error resetting port {port}: {e}")
 
 # Global variables for car state
 car_state = {
@@ -26,7 +44,11 @@ car_state = {
             "back_right": 0
         },
         "gyro": {},
-        "lidar": {}
+        "lidar": {},
+        "battery": {
+            "voltage": 0.0,
+            "warning": False
+        }
     }
 }
 
@@ -35,16 +57,18 @@ lidar_processor = None
 try:
     lidar_processor = LidarProcessor(port='/dev/ttyUSB0')
     lidar_processor.start()
-    print("LiDAR initialized")
+    logger.info("LiDAR initialized")
 except Exception as e:
-    print(f"Could not initialize LiDAR: {e}")
+    logger.error(f"Could not initialize LiDAR: {e}")
 
 # Serial communication with Arduino
 try:
-    arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
-    print("Arduino connected")
+    # Reset the COM port before opening it
+    reset_serial_port('COM4')
+    arduino = serial.Serial('COM4', 9600, timeout=1)
+    logger.info("Arduino connected")
 except Exception as e:
-    print(f"Could not connect to Arduino: {e}")
+    logger.error(f"Could not connect to Arduino: {e}")
     arduino = None
 
 def read_arduino_data():
@@ -54,10 +78,19 @@ def read_arduino_data():
             try:
                 data = arduino.readline().decode('utf-8').strip()
                 if data:
-                    sensor_data = json.loads(data)
-                    car_state["sensor_data"].update(sensor_data)
-            except:
-                pass
+                    try:
+                        # Check if this is a log message
+                        if data.startswith('{"log":'):
+                            log_data = json.loads(data)["log"]
+                            logger.info(f"Arduino {log_data['level']}: {log_data['message']}")
+                        else:
+                            # Regular sensor data
+                            sensor_data = json.loads(data)
+                            car_state["sensor_data"].update(sensor_data)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error parsing Arduino data: {e}")
+            except Exception as e:
+                logger.error(f"Error reading from Arduino: {e}")
         time.sleep(0.1)
 
 def update_lidar_data():
@@ -67,38 +100,41 @@ def update_lidar_data():
             try:
                 lidar_data = lidar_processor.get_obstacle_data()
                 car_state["sensor_data"]["lidar"] = lidar_data
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error updating LiDAR data: {e}")
         time.sleep(0.1)
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/api/state', methods=['GET'])
+@app.route('/api/state')
 def get_state():
     return jsonify(car_state)
 
 @app.route('/api/control', methods=['POST'])
 def control():
-    data = request.json
-    if 'mode' in data:
-        car_state['mode'] = data['mode']
-    if 'speed' in data:
-        car_state['speed'] = data['speed']
-    if 'steering' in data:
-        car_state['steering'] = data['steering']
-    
-    # Send command to Arduino
-    if arduino:
-        command = json.dumps({
-            'mode': car_state['mode'],
-            'speed': car_state['speed'],
-            'steering': car_state['steering']
-        })
-        arduino.write(command.encode())
-    
-    return jsonify({"status": "success"})
+    try:
+        data = request.json
+        if 'mode' in data:
+            car_state['mode'] = data['mode']
+            logger.info(f"Mode changed to: {data['mode']}")
+        if 'speed' in data:
+            car_state['speed'] = data['speed']
+            logger.info(f"Speed changed to: {data['speed']}")
+        if 'steering' in data:
+            car_state['steering'] = data['steering']
+            logger.info(f"Steering changed to: {data['steering']}")
+        
+        # Send command to Arduino
+        if arduino:
+            command = json.dumps(car_state)
+            arduino.write((command + '\n').encode())
+        
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error processing control command: {e}")
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/lidar', methods=['GET'])
 def get_lidar_data():

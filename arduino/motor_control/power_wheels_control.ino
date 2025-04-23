@@ -40,6 +40,9 @@ bool stringComplete = false;
 int currentSpeed = 0;
 int currentSteering = 0;  // -100 to 100, where 0 is straight
 String currentMode = "manual";
+bool batteryWarning = false;
+unsigned long lastLogTime = 0;
+const unsigned long LOG_INTERVAL = 1000;  // Log every 1 second
 
 void setup() {
     // Initialize serial communication
@@ -54,12 +57,16 @@ void setup() {
     Wire.begin();
     mpu.initialize();
     if (!mpu.testConnection()) {
-        Serial.println("MPU6050 connection failed");
+        sendLog("ERROR", "MPU6050 connection failed");
+    } else {
+        sendLog("INFO", "MPU6050 initialized successfully");
     }
 
     // Initialize battery monitoring
     pinMode(BATTERY_PIN, INPUT);
     analogReference(DEFAULT);  // Use 5V reference
+    
+    sendLog("INFO", "System initialized");
 }
 
 void loop() {
@@ -80,6 +87,29 @@ void loop() {
     int16_t gx, gy, gz;
     mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
+    // Check for obstacles and log warnings
+    if (frontLeftDistance > 0 && frontLeftDistance < 30) {
+        sendLog("WARNING", "Obstacle detected front left: " + String(frontLeftDistance) + "cm");
+    }
+    if (frontRightDistance > 0 && frontRightDistance < 30) {
+        sendLog("WARNING", "Obstacle detected front right: " + String(frontRightDistance) + "cm");
+    }
+    if (backLeftDistance > 0 && backLeftDistance < 20) {
+        sendLog("WARNING", "Obstacle detected back left: " + String(backLeftDistance) + "cm");
+    }
+    if (backRightDistance > 0 && backRightDistance < 20) {
+        sendLog("WARNING", "Obstacle detected back right: " + String(backRightDistance) + "cm");
+    }
+
+    // Check battery level
+    float batteryVoltage = getBatteryVoltage();
+    if (batteryVoltage < BATTERY_WARNING_VOLTAGE && !batteryWarning) {
+        batteryWarning = true;
+        sendLog("WARNING", "Low battery: " + String(batteryVoltage) + "V");
+    } else if (batteryVoltage >= BATTERY_WARNING_VOLTAGE) {
+        batteryWarning = false;
+    }
+
     // Send sensor data to Raspberry Pi
     String sensorData = "{\"ultrasonic\":{\"front_left\":" + String(frontLeftDistance) + 
                        ",\"front_right\":" + String(frontRightDistance) + 
@@ -90,7 +120,9 @@ void loop() {
                        ",\"az\":" + String(az) + 
                        ",\"gx\":" + String(gx) + 
                        ",\"gy\":" + String(gy) + 
-                       ",\"gz\":" + String(gz) + "}}";
+                       ",\"gz\":" + String(gz) + 
+                       "},\"battery\":{\"voltage\":" + String(batteryVoltage) + 
+                       ",\"warning\":" + String(batteryWarning) + "}}";
     Serial.println(sensorData);
 
     // Autonomous mode logic
@@ -101,17 +133,29 @@ void loop() {
             // Obstacle detected in front, turn based on which side has more space
             if (frontLeftDistance > frontRightDistance) {
                 moveMotors(50, -50);  // Turn left
+                sendLog("INFO", "Autonomous: Turning left to avoid obstacle");
             } else {
                 moveMotors(50, 50);   // Turn right
+                sendLog("INFO", "Autonomous: Turning right to avoid obstacle");
             }
         } else if (backLeftDistance > 0 && backLeftDistance < 20 || 
                   backRightDistance > 0 && backRightDistance < 20) {
             // Obstacle detected behind, move forward
             moveMotors(50, 0);
+            sendLog("INFO", "Autonomous: Moving forward to avoid rear obstacle");
         } else {
             // No obstacles, move forward
             moveMotors(50, 0);
         }
+    }
+
+    // Periodic status logging
+    unsigned long currentTime = millis();
+    if (currentTime - lastLogTime >= LOG_INTERVAL) {
+        lastLogTime = currentTime;
+        sendLog("INFO", "Status: Mode=" + currentMode + 
+                       " Speed=" + String(currentSpeed) + 
+                       " Steering=" + String(currentSteering));
     }
 
     delay(100);  // Small delay to prevent overwhelming the serial buffer
@@ -132,20 +176,30 @@ void processCommand(String command) {
     // Example command: {"mode":"manual","speed":50,"steering":0}
     int modeStart = command.indexOf("\"mode\":\"") + 8;
     int modeEnd = command.indexOf("\"", modeStart);
-    currentMode = command.substring(modeStart, modeEnd);
+    String newMode = command.substring(modeStart, modeEnd);
+    
+    if (newMode != currentMode) {
+        currentMode = newMode;
+        sendLog("INFO", "Mode changed to: " + currentMode);
+    }
 
     int speedStart = command.indexOf("\"speed\":") + 8;
     int speedEnd = command.indexOf(",", speedStart);
     if (speedEnd == -1) speedEnd = command.indexOf("}", speedStart);
-    currentSpeed = command.substring(speedStart, speedEnd).toInt();
+    int newSpeed = command.substring(speedStart, speedEnd).toInt();
+    
+    if (newSpeed != currentSpeed) {
+        currentSpeed = newSpeed;
+        sendLog("INFO", "Speed changed to: " + String(currentSpeed));
+    }
 
     int steeringStart = command.indexOf("\"steering\":") + 11;
     int steeringEnd = command.indexOf("}", steeringStart);
-    currentSteering = command.substring(steeringStart, steeringEnd).toInt();
-
-    // Execute command
-    if (currentMode == "manual") {
-        moveMotors(currentSpeed, currentSteering);
+    int newSteering = command.substring(steeringStart, steeringEnd).toInt();
+    
+    if (newSteering != currentSteering) {
+        currentSteering = newSteering;
+        sendLog("INFO", "Steering changed to: " + String(currentSteering));
     }
 }
 
@@ -179,31 +233,16 @@ void moveMotors(int speed, int steering) {
     }
 }
 
-float readBatteryVoltage() {
+float getBatteryVoltage() {
     // Read analog value and convert to voltage
     int rawValue = analogRead(BATTERY_PIN);
     float voltage = (rawValue * REFERENCE_VOLTAGE / ADC_RESOLUTION) * VOLTAGE_DIVIDER_RATIO;
     return voltage;
 }
 
-int calculateBatteryPercentage() {
-    float voltage = readBatteryVoltage();
-    // Linear interpolation between empty and full voltage
-    float percentage = 100.0 * (voltage - BATTERY_EMPTY_VOLTAGE) / 
-                      (BATTERY_FULL_VOLTAGE - BATTERY_EMPTY_VOLTAGE);
-    // Constrain to 0-100%
-    return constrain(int(percentage), 0, 100);
-}
-
-void collectSensorData() {
-    // ... existing sensor data collection ...
-    
-    // Add battery data with warning status
-    float voltage = readBatteryVoltage();
-    int percentage = calculateBatteryPercentage();
-    bool lowBattery = voltage < BATTERY_WARNING_VOLTAGE;
-    
-    sensorData["battery_voltage"] = voltage;
-    sensorData["battery_percentage"] = percentage;
-    sensorData["battery_warning"] = lowBattery;
+void sendLog(String level, String message) {
+    String logMessage = "{\"log\":{\"level\":\"" + level + 
+                       "\",\"message\":\"" + message + 
+                       "\",\"timestamp\":" + String(millis()) + "}}";
+    Serial.println(logMessage);
 } 

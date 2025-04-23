@@ -3,6 +3,7 @@ import time
 import json
 import serial.tools.list_ports
 import serial
+import logging
 
 class LidarProcessor:
     def __init__(self, port=None):
@@ -17,26 +18,30 @@ class LidarProcessor:
             "back": 0
         }
         
+        # Set up logging
+        self.logger = logging.getLogger('lidar_processor')
+        self.logger.setLevel(logging.INFO)
+        
         # Print available ports
-        print("\nAvailable serial ports:")
+        self.logger.info("\nAvailable serial ports:")
         for port in serial.tools.list_ports.comports():
-            print(f"- {port.device}")
+            self.logger.info(f"- {port.device}")
 
     def find_lidar_port(self):
         """Try to automatically detect the LiDAR port"""
-        print("\nAttempting to detect LiDAR port...")
+        self.logger.info("\nAttempting to detect LiDAR port...")
         
         # Try all available ports
         for port in serial.tools.list_ports.comports():
             if self.try_port(port.device):
                 return port.device
         
-        print("Could not detect LiDAR port")
+        self.logger.error("Could not detect LiDAR port")
         return None
 
     def try_port(self, port):
         """Try to connect to a specific port and verify it's a LiDAR"""
-        print(f"Trying port {port}...")
+        self.logger.info(f"Trying port {port}...")
         
         try:
             # Try to initialize LiDAR
@@ -46,12 +51,12 @@ class LidarProcessor:
             info = lidar.get_info()
             lidar.disconnect()
             
-            print(f"✓ Found LiDAR on port {port}")
-            print(f"LiDAR Info: {info}")
+            self.logger.info(f"✓ Found LiDAR on port {port}")
+            self.logger.info(f"LiDAR Info: {info}")
             return True
             
         except Exception as e:
-            print(f"Error testing port {port}: {str(e)}")
+            self.logger.error(f"Error testing port {port}: {str(e)}")
             return False
 
     def start(self):
@@ -61,10 +66,10 @@ class LidarProcessor:
             if self.port is None:
                 self.port = self.find_lidar_port()
                 if self.port is None:
-                    print("Error: Could not find LiDAR port")
+                    self.logger.error("Error: Could not find LiDAR port")
                     return False
             
-            print(f"\nConnecting to LiDAR on port {self.port}")
+            self.logger.info(f"\nConnecting to LiDAR on port {self.port}")
             
             # Initialize LiDAR
             self.lidar = RPLidar(self.port)
@@ -72,13 +77,18 @@ class LidarProcessor:
             
             # Test connection
             info = self.lidar.get_info()
-            print(f"✓ LiDAR connected successfully")
-            print(f"LiDAR Info: {info}")
+            self.logger.info(f"✓ LiDAR connected successfully")
+            self.logger.info(f"LiDAR Info: {info}")
+            
+            # Check health status
+            health_status, error_code = self.lidar.get_health()
+            if health_status != "Good":
+                self.logger.warning(f"LiDAR health status: {health_status} (Error code: {error_code})")
             
             return True
             
         except Exception as e:
-            print(f"Error starting LiDAR: {str(e)}")
+            self.logger.error(f"Error starting LiDAR: {str(e)}")
             return False
 
     def stop(self):
@@ -88,13 +98,14 @@ class LidarProcessor:
                 self.scanning = False
                 self.lidar.stop()
                 self.lidar.disconnect()
-                print("✓ LiDAR stopped successfully")
+                self.logger.info("✓ LiDAR stopped successfully")
             except Exception as e:
-                print(f"Error stopping LiDAR: {str(e)}")
+                self.logger.error(f"Error stopping LiDAR: {str(e)}")
 
     def get_scan_data(self):
         """Get raw scan data"""
         if not self.scanning or not self.lidar:
+            self.logger.warning("LiDAR not initialized")
             return {"error": "LiDAR not initialized"}
 
         try:
@@ -105,12 +116,13 @@ class LidarProcessor:
                     break
             return scan_data
         except Exception as e:
-            print(f"Error getting scan data: {str(e)}")
+            self.logger.error(f"Error getting scan data: {str(e)}")
             return {"error": str(e)}
 
     def get_obstacle_data(self):
         """Process scan data to detect obstacles"""
         if not self.scanning or not self.lidar:
+            self.logger.warning("LiDAR not initialized")
             return self.obstacle_data
 
         try:
@@ -144,9 +156,14 @@ class LidarProcessor:
                 "back": back_dist if back_dist != float('inf') else 0
             }
             
+            # Log obstacle detection
+            for direction, distance in self.obstacle_data.items():
+                if distance > 0 and distance < 100:  # Obstacle within 100mm
+                    self.logger.warning(f"Obstacle detected {direction}: {distance}mm")
+            
             return self.obstacle_data
         except Exception as e:
-            print(f"Error processing LiDAR data: {str(e)}")
+            self.logger.error(f"Error processing LiDAR data: {str(e)}")
             return self.obstacle_data
 
 if __name__ == "__main__":
