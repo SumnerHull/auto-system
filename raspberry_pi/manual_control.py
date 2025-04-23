@@ -6,7 +6,7 @@ import os
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('manual_control')
 
 def reset_serial_port(port):
@@ -46,6 +46,15 @@ def connect_to_arduino():
         arduino.rts = True
         time.sleep(2)  # Give the Arduino time to reset
         logger.info("Arduino connected and configured")
+        
+        # Test connection
+        arduino.write(b'TEST\n')
+        arduino.flush()
+        time.sleep(0.1)
+        if arduino.in_waiting > 0:
+            response = arduino.readline().decode('utf-8', errors='replace').strip()
+            logger.info(f"Arduino test response: {response}")
+        
         return arduino
     except Exception as e:
         logger.error(f"Could not connect to Arduino: {e}")
@@ -54,10 +63,20 @@ def connect_to_arduino():
 def send_command(arduino, command):
     """Send a command to the Arduino"""
     try:
-        command_str = json.dumps(command) + '\n'
+        # Format command to match Arduino's expected format exactly
+        command_str = '{"mode":"' + command['mode'] + '","speed":' + str(command['speed']) + ',"steering":' + str(command['steering']) + '}\n'
+        logger.debug(f"Sending command string: {command_str}")
+        
+        # Send command
         arduino.write(command_str.encode())
         arduino.flush()
         logger.info(f"Sent command: {command}")
+        
+        # Wait for response
+        time.sleep(0.1)
+        if arduino.in_waiting > 0:
+            response = arduino.readline().decode('utf-8', errors='replace').strip()
+            logger.info(f"Arduino response: {response}")
     except Exception as e:
         logger.error(f"Error sending command: {e}")
 
