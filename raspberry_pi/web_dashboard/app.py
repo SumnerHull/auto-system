@@ -100,23 +100,66 @@ def read_arduino_data():
                 if data:
                     logger.debug(f"Received from Arduino: {data}")
                     try:
-                        # Check if this is a log message
-                        if data.startswith('{"log":'):
-                            log_data = json.loads(data)["log"]
-                            logger.info(f"Arduino {log_data['level']}: {log_data['message']}")
+                        # Parse Arduino messages
+                        if "INFO:" in data or "WARNING:" in data:
+                            # Extract log level and message
+                            if "INFO:" in data:
+                                level = "info"
+                                message = data.split("INFO:")[1].strip()
+                            else:
+                                level = "warning"
+                                message = data.split("WARNING:")[1].strip()
+                            
+                            # Handle status message
+                            if "Status:" in message:
+                                status_parts = message.split("Status:")[1].strip().split()
+                                status_data = {}
+                                for part in status_parts:
+                                    key, value = part.split("=")
+                                    status_data[key.lower()] = value
+                                
+                                # Update car state
+                                if 'mode' in status_data:
+                                    car_state['mode'] = status_data['mode']
+                                if 'speed' in status_data:
+                                    car_state['speed'] = int(status_data['speed'])
+                                if 'steering' in status_data:
+                                    car_state['steering'] = int(status_data['steering'])
+                                
+                                # Emit updates
+                                socketio.emit('mode_update', {'mode': car_state['mode']})
+                                socketio.emit('speed_update', {'speed': car_state['speed']})
+                                socketio.emit('steering_update', {'steering': car_state['steering']})
+                            
+                            # Handle battery warning
+                            elif "Low battery:" in message:
+                                voltage = float(message.split("Low battery:")[1].strip().replace("V", ""))
+                                car_state["sensor_data"]["battery"] = {
+                                    "voltage": voltage,
+                                    "current": 0.0,
+                                    "warning": voltage < 11.0
+                                }
+                                socketio.emit('sensor_update', car_state["sensor_data"])
+                            
+                            # Emit log message
                             socketio.emit('log', {
-                                'message': log_data['message'],
-                                'type': log_data['level']
+                                'message': message,
+                                'type': level
                             })
+                            logger.info(f"Arduino {level}: {message}")
+                            
                         else:
-                            # Regular sensor data
-                            sensor_data = json.loads(data)
-                            car_state["sensor_data"].update(sensor_data)
-                            # Emit sensor data update
-                            socketio.emit('sensor_update', sensor_data)
-                            logger.debug(f"Updated sensor data: {sensor_data}")
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Error parsing Arduino data: {e}")
+                            # Try to parse as JSON if it's not a log message
+                            try:
+                                sensor_data = json.loads(data)
+                                car_state["sensor_data"].update(sensor_data)
+                                socketio.emit('sensor_update', sensor_data)
+                                logger.debug(f"Updated sensor data: {sensor_data}")
+                            except json.JSONDecodeError:
+                                logger.debug(f"Non-JSON data received: {data}")
+                                
+                    except Exception as e:
+                        logger.error(f"Error processing Arduino data: {e}")
             except Exception as e:
                 logger.error(f"Error reading from Arduino: {e}")
         time.sleep(0.1)
