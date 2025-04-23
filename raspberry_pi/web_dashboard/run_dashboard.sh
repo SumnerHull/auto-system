@@ -6,6 +6,10 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cd "$SCRIPT_DIR"
+
 echo -e "${YELLOW}Starting Auto-System Web Dashboard...${NC}"
 echo "----------------------------------------"
 
@@ -29,7 +33,11 @@ fi
 
 # Activate virtual environment
 echo -e "${YELLOW}Activating virtual environment...${NC}"
-source venv/bin/activate
+source "$SCRIPT_DIR/venv/bin/activate"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Failed to activate virtual environment${NC}"
+    exit 1
+fi
 echo -e "${GREEN}✓ Virtual environment activated${NC}"
 
 # Install required packages

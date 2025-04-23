@@ -64,9 +64,27 @@ except Exception as e:
 # Serial communication with Arduino
 try:
     # Reset the COM port before opening it
-    reset_serial_port('COM4')
-    arduino = serial.Serial('COM4', 9600, timeout=1)
-    logger.info("Arduino connected")
+    reset_serial_port('/dev/ttyACM0')
+    arduino = serial.Serial(
+        port='/dev/ttyACM0',
+        baudrate=9600,
+        bytesize=serial.EIGHTBITS,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        timeout=1,
+        write_timeout=1,
+        xonxoff=False,
+        rtscts=False,
+        dsrdtr=False
+    )
+    # Flush any existing data
+    arduino.reset_input_buffer()
+    arduino.reset_output_buffer()
+    # Enable DTR and RTS
+    arduino.dtr = True
+    arduino.rts = True
+    time.sleep(2)  # Give the Arduino time to reset
+    logger.info("Arduino connected and configured")
 except Exception as e:
     logger.error(f"Could not connect to Arduino: {e}")
     arduino = None
@@ -78,6 +96,7 @@ def read_arduino_data():
             try:
                 data = arduino.readline().decode('utf-8').strip()
                 if data:
+                    logger.debug(f"Received from Arduino: {data}")  # Add debug logging
                     try:
                         # Check if this is a log message
                         if data.startswith('{"log":'):
@@ -87,6 +106,7 @@ def read_arduino_data():
                             # Regular sensor data
                             sensor_data = json.loads(data)
                             car_state["sensor_data"].update(sensor_data)
+                            logger.debug(f"Updated sensor data: {sensor_data}")  # Add debug logging
                     except json.JSONDecodeError as e:
                         logger.error(f"Error parsing Arduino data: {e}")
             except Exception as e:
@@ -129,7 +149,10 @@ def control():
         # Send command to Arduino
         if arduino:
             command = json.dumps(car_state)
+            logger.debug(f"Sending to Arduino: {command}")  # Add debug logging
             arduino.write((command + '\n').encode())
+            arduino.flush()  # Ensure data is sent
+            logger.debug("Command sent and flushed")  # Add debug logging
         
         return jsonify({"status": "success"})
     except Exception as e:
