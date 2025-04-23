@@ -43,7 +43,7 @@ echo -e "${GREEN}✓ Virtual environment activated${NC}"
 # Install required packages
 echo -e "${YELLOW}Installing/updating Python dependencies...${NC}"
 pip install --upgrade pip
-pip install flask pyserial rplidar-roboticia
+pip install flask pyserial rplidar-roboticia flask-socketio
 if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Failed to install required packages${NC}"
     exit 1

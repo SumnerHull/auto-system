@@ -7,12 +7,14 @@ import sys
 import os
 import logging
 from datetime import datetime
+from flask_socketio import SocketIO, emit
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lidar_processing.lidar_processor import LidarProcessor
 
 app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -96,17 +98,23 @@ def read_arduino_data():
             try:
                 data = arduino.readline().decode('utf-8').strip()
                 if data:
-                    logger.debug(f"Received from Arduino: {data}")  # Add debug logging
+                    logger.debug(f"Received from Arduino: {data}")
                     try:
                         # Check if this is a log message
                         if data.startswith('{"log":'):
                             log_data = json.loads(data)["log"]
                             logger.info(f"Arduino {log_data['level']}: {log_data['message']}")
+                            socketio.emit('log', {
+                                'message': log_data['message'],
+                                'type': log_data['level']
+                            })
                         else:
                             # Regular sensor data
                             sensor_data = json.loads(data)
                             car_state["sensor_data"].update(sensor_data)
-                            logger.debug(f"Updated sensor data: {sensor_data}")  # Add debug logging
+                            # Emit sensor data update
+                            socketio.emit('sensor_update', sensor_data)
+                            logger.debug(f"Updated sensor data: {sensor_data}")
                     except json.JSONDecodeError as e:
                         logger.error(f"Error parsing Arduino data: {e}")
             except Exception as e:
@@ -120,6 +128,8 @@ def update_lidar_data():
             try:
                 lidar_data = lidar_processor.get_obstacle_data()
                 car_state["sensor_data"]["lidar"] = lidar_data
+                # Emit LiDAR data update
+                socketio.emit('lidar_update', lidar_data)
             except Exception as e:
                 logger.error(f"Error updating LiDAR data: {e}")
         time.sleep(0.1)
@@ -139,20 +149,23 @@ def control():
         if 'mode' in data:
             car_state['mode'] = data['mode']
             logger.info(f"Mode changed to: {data['mode']}")
+            socketio.emit('mode_update', {'mode': data['mode']})
         if 'speed' in data:
             car_state['speed'] = data['speed']
             logger.info(f"Speed changed to: {data['speed']}")
+            socketio.emit('speed_update', {'speed': data['speed']})
         if 'steering' in data:
             car_state['steering'] = data['steering']
             logger.info(f"Steering changed to: {data['steering']}")
+            socketio.emit('steering_update', {'steering': data['steering']})
         
         # Send command to Arduino
         if arduino:
             command = json.dumps(car_state)
-            logger.debug(f"Sending to Arduino: {command}")  # Add debug logging
+            logger.debug(f"Sending to Arduino: {command}")
             arduino.write((command + '\n').encode())
             arduino.flush()  # Ensure data is sent
-            logger.debug("Command sent and flushed")  # Add debug logging
+            logger.debug("Command sent and flushed")
         
         return jsonify({"status": "success"})
     except Exception as e:
@@ -164,6 +177,16 @@ def get_lidar_data():
     if lidar_processor:
         return jsonify(lidar_processor.get_scan_data())
     return jsonify({"error": "LiDAR not available"})
+
+@socketio.on('connect')
+def handle_connect():
+    logger.info('Client connected')
+    # Send initial state
+    emit('initial_state', car_state)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info('Client disconnected')
 
 def cleanup():
     """Cleanup function to stop all threads and close connections"""
@@ -184,8 +207,8 @@ if __name__ == '__main__':
         lidar_thread.daemon = True
         lidar_thread.start()
         
-        # Start Flask app
-        app.run(host='0.0.0.0', port=5000, debug=True)
+        # Start Flask app with SocketIO
+        socketio.run(app, host='0.0.0.0', port=5000, debug=True)
     except KeyboardInterrupt:
         cleanup()
     finally:

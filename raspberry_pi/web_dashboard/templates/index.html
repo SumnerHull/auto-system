@@ -357,24 +357,113 @@
         let logs = [];
         const MAX_LOGS = 100;
 
-        // Initialize WebSocket connection
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        
-        // WebSocket event handlers
-        ws.onopen = () => {
+        // Initialize SocketIO connection
+        const socket = io();
+
+        // SocketIO event handlers
+        socket.on('connect', () => {
             updateStatus('websocketStatusText', 'Connected');
             addLog('WebSocket connection established', 'info');
-        };
+        });
 
-        ws.onclose = () => {
+        socket.on('disconnect', () => {
             updateStatus('websocketStatusText', 'Disconnected');
             addLog('WebSocket connection lost', 'error');
-        };
+        });
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+        socket.on('initial_state', (data) => {
             updateDashboard(data);
-        };
+            addLog('Received initial state', 'info');
+        });
+
+        socket.on('sensor_update', (data) => {
+            updateSensorData(data);
+            addLog('Sensor data updated', 'info');
+        });
+
+        socket.on('lidar_update', (data) => {
+            updateLidarData(data);
+            addLog('LiDAR data updated', 'info');
+        });
+
+        socket.on('mode_update', (data) => {
+            currentMode = data.mode;
+            updateModeDisplay();
+            addLog(`Mode changed to: ${data.mode}`, 'info');
+        });
+
+        socket.on('speed_update', (data) => {
+            currentSpeed = data.speed;
+            document.getElementById('speedSlider').value = currentSpeed;
+            addLog(`Speed changed to: ${data.speed}`, 'info');
+        });
+
+        socket.on('steering_update', (data) => {
+            currentSteering = data.steering;
+            document.getElementById('steeringSlider').value = currentSteering;
+            addLog(`Steering changed to: ${data.steering}`, 'info');
+        });
+
+        socket.on('log', (data) => {
+            addLog(data.message, data.type);
+        });
+
+        // Update sensor data display
+        function updateSensorData(data) {
+            const sensorDataDiv = document.getElementById('sensorData');
+            sensorDataDiv.innerHTML = Object.entries(data)
+                .map(([key, value]) => `
+                    <div class="sensor-row">
+                        <span class="sensor-label">${key}:</span>
+                        <span class="sensor-value">${JSON.stringify(value)}</span>
+                    </div>
+                `).join('');
+        }
+
+        // Update LiDAR data
+        function updateLidarData(data) {
+            // Update LiDAR status
+            updateStatus('lidarStatusText', 'Connected');
+            // Update LiDAR visualization
+            updateLidarVisualization(data);
+        }
+
+        // Update dashboard with complete state
+        function updateDashboard(data) {
+            // Update mode
+            currentMode = data.mode;
+            updateModeDisplay();
+
+            // Update speed and steering
+            currentSpeed = data.speed;
+            currentSteering = data.steering;
+            document.getElementById('speedSlider').value = currentSpeed;
+            document.getElementById('steeringSlider').value = currentSteering;
+
+            // Update sensor data
+            if (data.sensor_data) {
+                updateSensorData(data.sensor_data);
+                
+                // Update Arduino status
+                if (Object.keys(data.sensor_data).length > 0) {
+                    updateStatus('arduinoStatusText', 'Connected');
+                } else {
+                    updateStatus('arduinoStatusText', 'Disconnected');
+                }
+
+                // Update battery status
+                if (data.sensor_data.battery) {
+                    const batteryVoltage = document.getElementById('batteryVoltage');
+                    const batteryCurrent = document.getElementById('batteryCurrent');
+                    const batteryProgress = document.querySelector('.progress-bar');
+                    
+                    batteryVoltage.textContent = `${data.sensor_data.battery.voltage.toFixed(1)}V`;
+                    batteryCurrent.textContent = `${data.sensor_data.battery.current.toFixed(1)}A`;
+                    batteryProgress.style.width = `${data.sensor_data.battery.level}%`;
+                    batteryProgress.className = `progress-bar bg-${data.sensor_data.battery.level > 20 ? 'success' : 'danger'}`;
+                }
+            }
+        }
 
         // Log management
         function addLog(message, type = 'info') {
@@ -524,37 +613,7 @@
                 speed: currentSpeed,
                 steering: currentSteering
             };
-            ws.send(JSON.stringify(state));
-        }
-
-        // Dashboard updates
-        function updateDashboard(data) {
-            // Update battery status
-            if (data.battery) {
-                document.getElementById('batteryVoltage').textContent = `${data.battery.voltage.toFixed(1)}V`;
-                document.getElementById('batteryCurrent').textContent = `${data.battery.current.toFixed(1)}A`;
-                const batteryLevel = document.querySelector('.progress-bar');
-                batteryLevel.style.width = `${data.battery.level}%`;
-                batteryLevel.className = `progress-bar bg-${data.battery.level > 20 ? 'success' : 'danger'}`;
-            }
-
-            // Update sensor data
-            if (data.sensors) {
-                document.getElementById('sensorData').innerHTML = Object.entries(data.sensors)
-                    .map(([key, value]) => `
-                        <div class="sensor-row">
-                            <span class="sensor-label">${key}:</span>
-                            <span class="sensor-value">${value}</span>
-                        </div>
-                    `).join('');
-            }
-
-            // Update system status
-            if (data.status) {
-                Object.entries(data.status).forEach(([component, status]) => {
-                    updateStatus(`${component}StatusText`, status);
-                });
-            }
+            socket.emit('mode_update', state);
         }
 
         // Initialize
