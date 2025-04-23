@@ -15,12 +15,29 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Check if required Python packages are installed
-echo -e "${YELLOW}Checking Python dependencies...${NC}"
-python3 -c "import flask, serial, threading, logging" 2>/dev/null
+# Create and activate virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo -e "${YELLOW}Creating virtual environment...${NC}"
+    python3 -m venv venv
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Error: Failed to create virtual environment${NC}"
+        echo "Please install venv: sudo apt-get install python3-venv"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ Virtual environment created${NC}"
+fi
+
+# Activate virtual environment
+echo -e "${YELLOW}Activating virtual environment...${NC}"
+source venv/bin/activate
+echo -e "${GREEN}✓ Virtual environment activated${NC}"
+
+# Install required packages
+echo -e "${YELLOW}Installing/updating Python dependencies...${NC}"
+pip install --upgrade pip
+pip install flask pyserial rplidar-roboticia
 if [ $? -ne 0 ]; then
-    echo -e "${RED}Error: Required Python packages are missing${NC}"
-    echo "Please install them using: pip3 install flask pyserial"
+    echo -e "${RED}Error: Failed to install required packages${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ All Python dependencies are installed${NC}"
@@ -47,9 +64,10 @@ echo -e "${YELLOW}Press Ctrl+C to stop the server${NC}"
 echo "----------------------------------------"
 
 # Run the Flask application
-python3 app.py
+python app.py
 
 # Cleanup on exit
 echo -e "${YELLOW}Shutting down...${NC}"
 echo "----------------------------------------"
-echo -e "${GREEN}Web Dashboard stopped${NC}" 
+echo -e "${GREEN}Web Dashboard stopped${NC}"
+deactivate 
