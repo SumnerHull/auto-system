@@ -97,6 +97,7 @@ except Exception as e:
 
 def read_arduino_data():
     """Background thread to read data from Arduino"""
+    global arduino  # Declare arduino as global
     while True:
         try:
             if arduino and arduino.is_open:
